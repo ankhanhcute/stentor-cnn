@@ -1,0 +1,25 @@
+# Julia files
+*.jl
+
+# Large data files
+*.h5
+*.mp4
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Model checkpoints and outputs
+stentor_cnn/checkpoints/
+stentor_cnn/outputs/
+*.pt
+*.onnx
+*.pth
+
+# Mac junk
+.DS_Store
+.sixth/
+
+# Jupyter
+*.ipynb_checkpoints
