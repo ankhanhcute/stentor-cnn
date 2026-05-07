@@ -13,6 +13,7 @@ __pycache__/
 # Model checkpoints and outputs
 stentor_cnn/checkpoints/
 stentor_cnn/outputs/
+stentor_cnn/output/
 *.pt
 *.onnx
 *.pth
