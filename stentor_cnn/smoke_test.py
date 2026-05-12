@@ -3,7 +3,7 @@ smoke_test.py
 -------------
 Visualize pre,post, label samples from the loader before feed it to the model, so we 
 can eyeball it:
-     (a) the reshape produced sensible cell tiles (not rotated/scrambled)]
+     (a) the reshape produced sensible cell tiles (not rotated/scrambled)
      (b) channel 0 == pre frame and channel 1 == post frame, 
      (c) label=1 samples actually look like contracted stentor (small dark polka dot
      on the right) but label=0 is unchanged, extended one 

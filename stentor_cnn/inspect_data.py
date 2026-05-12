@@ -45,7 +45,11 @@ def inspect_contractions(path: str) -> None:
     print(f"\n=== Contractions file: {path} ===")
     with h5py.File(path, "r") as f:
         for k in f.keys():
-            arr = f[k][:]
+            d = f[k]
+            if d.shape == ():
+                print(f" {k:8s} scalar value={d[()]}")
+                continue
+            arr = d[:]
             n_one = int(np.sum(arr == 1))
             n_zero = int(np.sum(arr == 0))
             n_nan = int(np.sum(np.isnan(arr)))

@@ -24,7 +24,6 @@ import h5py
 import numpy as np
 import torch 
 from torch.utils.data import Dataset 
-
 #-----low level loading-----
 def load_tiles(tiled_h5_path:str, meta_h5_path:str)  -> tuple[np.array, dict]:
     """
@@ -71,7 +70,7 @@ def load_tiles(tiled_h5_path:str, meta_h5_path:str)  -> tuple[np.array, dict]:
                     f"crop_size={crop_size}, num_cells={num_cells}"
                 )
             x = raw.reshape(T, crop_size, num_cells, crop_size)
-            tiled = np.transpose(x, (2, 1, 3, 0))
+            tiled = np.transpose(x, (2, 3, 1, 0))
             per_trials.append(tiled)
 
         tiles_u8 = np.concatenate(per_trials, axis=-1)
@@ -116,8 +115,11 @@ def load_manual_labels(contractions_h5_path: str) -> np.ndarray:
                 f"keys present: {list(f.keys())}"
         )
         return f["manual"][:]
-
-#-----PyTorch Dataset------
+def make_circular_mask(h, w, cy, cx, r):
+    ys = np.arange(h)[:, None]
+    xs = np.arange(w)[None, :]
+    return (ys - cy)**2 + (xs - cx)**2 <= r**2
+#-----PyTorch Dataset------ß
 
 class StentorPairs(Dataset):
     """
@@ -138,7 +140,8 @@ class StentorPairs(Dataset):
         tiles: np.ndarray,
         manual: np.ndarray,
         cell_indices: Iterable[int], #to avoid training and testing on the same cells
-    ):
+    ):  
+        
         if tiles.ndim != 4: #cell, height, width, frame
             raise ValueError(f"tiles must be 4-D, got shape {tiles.shape}")
         if manual.ndim != 2: #cell x stimulus
@@ -157,6 +160,12 @@ class StentorPairs(Dataset):
         #saving data inside class
         self.tiles = tiles
         self.manual = manual
+        from find_holdfast import find_holdfast
+        crop_size = tiles.shape[1]
+        self.holdfasts = []
+        for c in range(tiles.shape[0]):
+            result = find_holdfast(tiles[c], crop_size)
+            self.holdfasts.append(result['holdfast'])
         self.index: list[tuple[int, int, float]] = []
         cell_indices = list(cell_indices)
         for c in cell_indices:
@@ -171,13 +180,18 @@ class StentorPairs(Dataset):
         return len(self.index)
     def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor]:
         c, k, lab = self.index[i]
-        pre = self.tiles[c, :, :, 2 * k] #cell, all height, all width, frame
+        pre = self.tiles[c, :, :, 2 * k]
         post = self.tiles[c, :, :, 2 * k + 1]
-        x = np.stack([pre, post], axis=0)           # (2, H, W)
-        return (
+        cy, cx = self.holdfasts[c]
+        h, w = pre.shape
+        mask = make_circular_mask(h, w, cy, cx, r=40)
+        pre = pre * mask
+        post = post * mask
+        x = np.stack([pre, post], axis=0)         # (2, H, W)
+
+        return(
             torch.from_numpy(x),
-            torch.tensor(lab, dtype=torch.float32),
-        )
+            torch.tensor(lab, dtype=torch.float32),)
     def positive_fraction(self) -> float:
         if not self.index:
             return 0.0

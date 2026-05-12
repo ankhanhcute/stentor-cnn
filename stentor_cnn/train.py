@@ -16,7 +16,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -30,9 +30,13 @@ PROJECT_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 
 sys.path.insert(0, THIS_DIR)
 
-if len(sys.argv) != 4:
+if len(sys.argv) < 4 or (len(sys.argv) - 1) % 3 !=0 :
     print(f"Usage: python train.py <tiled.h5> <meta.h5> <contractions.h5>")
     sys.exit(1)
+
+recordings = []
+for i in range(1, len(sys.argv), 3):
+    recordings.append((sys.argv[i], sys.argv[i+1], sys.argv[i+2]))
 
 TILED_H5 = sys.argv[1]
 META_H5 = sys.argv[2]
@@ -62,7 +66,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 def compute_metrics(
     all_logits: list[torch.Tensor], 
     all_labels: list[torch.Tensor], 
-    threshold: float = 0.49, 
+    threshold: float = 0.5, 
 ) -> dict:
     logits = torch.cat(all_logits).cpu()
     labels = torch.cat(all_labels).cpu()
@@ -195,24 +199,26 @@ def main() -> int:
     print(f"device: {device}")
 
     print("Loading tiles...")
-    tiles, meta = loader.load_tiles(TILED_H5, META_H5)
-    manual = loader.load_manual_labels(GT_H5)
-    print(f"  tiles  {tiles.shape}  dtype={tiles.dtype}")
-    print(f"  manual {manual.shape}  pos_frac={np.nanmean(manual):.3f}")
+    train_datasets  = []
+    val_datasets = []
+    test_datasets = []
 
     #-----Split------
-    train_cells, val_cells, test_cells = loader.make_cell_disjoint_split(meta["num_cells"], val_cells=VAL_CELLS, test_cells=TEST_CELLS)
-    print(f"  train cells: {train_cells}")
-    print(f"  val   cells: {val_cells}")
-    print(f"  test  cells: {test_cells}")
+    for tiled_path, meta_path, gt_path in recordings:
+        tiles, meta = loader.load_tiles(tiled_path, meta_path)
+        manual = loader.load_manual_labels(gt_path)
+        tr, va, te = loader.make_cell_disjoint_split(meta["num_cells"], val_cells=VAL_CELLS, test_cells = TEST_CELLS)
+        train_datasets.append(loader.StentorPairs(tiles, manual, tr))
+        val_datasets.append(loader.StentorPairs(tiles, manual, va))
+        test_datasets.append(loader.StentorPairs(tiles, manual, te))
+    
+    ds_train = ConcatDataset(train_datasets)
+    ds_val = ConcatDataset(val_datasets)
+    ds_test = ConcatDataset(test_datasets)
 
-    ds_train = loader.StentorPairs(tiles, manual, train_cells)
-    ds_test = loader.StentorPairs(tiles, manual, test_cells)
-    ds_val = loader.StentorPairs(tiles, manual, val_cells)
-    print(f"  samples: train={len(ds_train)}  val={len(ds_val)}  test={len(ds_test)}")
-    print(f"  pos frac: train={ds_train.positive_fraction():.3f}  "
-          f"val={ds_val.positive_fraction():.3f}  "
-          f"test={ds_test.positive_fraction():.3f}")
+    total_pos  = sum(ds.positive_fraction() * len(ds) for ds in train_datasets)
+    total_samp = sum(len(ds) for ds in train_datasets)
+    pos_frac   = total_pos / max(total_samp, 1)
 
     dl_train = DataLoader(ds_train, batch_size=BATCH_SIZE, shuffle=True, drop_last=False, num_workers=0)
     dl_val = DataLoader(ds_val, batch_size=BATCH_SIZE, shuffle=False,
@@ -223,7 +229,6 @@ def main() -> int:
     model = StentorCNN(in_channels=2, dropout=DROPOUT).to(device)
     print(f"  model params: {count_params(model):,}")
     # --- Loss with pos_weight to handle class imbalance ---
-    pos_frac = ds_train.positive_fraction()
     pos_weight = torch.tensor([(1 - pos_frac) / max(pos_frac, 1e-6)],
                               device=device)
     print(f"  pos_weight: {pos_weight.item():.2f}")
