@@ -208,9 +208,9 @@ def main() -> int:
         tiles, meta = loader.load_tiles(tiled_path, meta_path)
         manual = loader.load_manual_labels(gt_path)
         tr, va, te = loader.make_cell_disjoint_split(meta["num_cells"], val_cells=VAL_CELLS, test_cells = TEST_CELLS)
-        train_datasets.append(loader.StentorPairs(tiles, manual, tr))
-        val_datasets.append(loader.StentorPairs(tiles, manual, va))
-        test_datasets.append(loader.StentorPairs(tiles, manual, te))
+        train_datasets.append(loader.StentorPairs(tiles, manual, tr, tiled_h5_path=tiled_path))
+        val_datasets.append(loader.StentorPairs(tiles, manual, va, tiled_h5_path=tiled_path))
+        test_datasets.append(loader.StentorPairs(tiles, manual, te, tiled_h5_path=tiled_path))
     
     ds_train = ConcatDataset(train_datasets)
     ds_val = ConcatDataset(val_datasets)

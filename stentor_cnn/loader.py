@@ -140,6 +140,7 @@ class StentorPairs(Dataset):
         tiles: np.ndarray,
         manual: np.ndarray,
         cell_indices: Iterable[int], #to avoid training and testing on the same cells
+        tiled_h5_path: str = "",
     ):  
         
         if tiles.ndim != 4: #cell, height, width, frame
