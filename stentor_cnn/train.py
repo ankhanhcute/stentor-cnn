@@ -255,7 +255,7 @@ def main() -> int:
     t_start = time.time()
     for epoch in range(1, EPOCHS + 1):
         tr_loss, tr_m = train_one_epoch(model, dl_train, loss_fn, optimizer, device)
-        vl_loss, vl_m = evaluate(model, dl_val, loss_fn, device)
+        vl_loss, vl_m, _, _= evaluate(model, dl_val, loss_fn, device)
         history["train_loss"].append(tr_loss)
         history["val_loss"].append(vl_loss)
         history["train_acc"].append(tr_m["acc"])
@@ -289,7 +289,11 @@ def main() -> int:
     for thresh in [0.3, 0.4, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8]:
         m = computer_metrics(te_logits, te_labels, threshold=thresh)
         print(f"{thresh:>10.2f}  {m['precision']:>6.3f}  {m['recall']:>6.3f}  {m['f1']:>6.3f}  {m['acc']:>6.3f}")
-    
+    best_thresh = max([0.3, 0.4, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8], 
+                  key=lambda t: compute_metrics(te_logits, te_labels, threshold=t)['precision']
+                  if compute_metrics(te_logits, te_labels, threshold=t)['recall'] > 0.85 
+                  else 0)
+    print(f"\nBest threshold for precision (recall > 0.85): {best_thresh}")
     # --- Save curves ---
     plot_curves(history, os.path.join(OUT_DIR, "training_curves.png"))
     return 0
