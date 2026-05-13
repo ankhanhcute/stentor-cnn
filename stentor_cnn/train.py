@@ -287,7 +287,7 @@ def main() -> int:
     print("\n--- Threshold Sweep ---")
     print(f"{'threshold':>10}  {'prec':>6}  {'rec':>6}  {'f1':>6}  {'acc':>6}")
     for thresh in [0.3, 0.4, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8]:
-        m = computer_metrics(te_logits, te_labels, threshold=thresh)
+        m = compute_metrics(te_logits, te_labels, threshold=thresh)
         print(f"{thresh:>10.2f}  {m['precision']:>6.3f}  {m['recall']:>6.3f}  {m['f1']:>6.3f}  {m['acc']:>6.3f}")
     best_thresh = max([0.3, 0.4, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8], 
                   key=lambda t: compute_metrics(te_logits, te_labels, threshold=t)['precision']
