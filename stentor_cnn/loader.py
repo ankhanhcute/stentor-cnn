@@ -118,7 +118,7 @@ def load_manual_labels(contractions_h5_path: str) -> np.ndarray:
 def make_circular_mask(h, w, cy, cx, r):
     ys = np.arange(h)[:, None]
     xs = np.arange(w)[None, :]
-        return (ys - cy)**2 + (xs - cx)**2 <= r**2
+    return (ys - cy)**2 + (xs - cx)**2 <= r**2
 #-----PyTorch Dataset------ß
 
 class StentorPairs(Dataset):
@@ -174,7 +174,7 @@ class StentorPairs(Dataset):
             for c in range(tiles.shape[0]):
                 result = find_holdfast(tiles[c], crop_size)
                 self.holdfasts.append(result['holdfast'])
-    np.save(cache_path, np.array(self.holdfasts))
+            np.save(cache_path, np.array(self.holdfasts))
         self.index: list[tuple[int, int, float]] = []
         cell_indices = list(cell_indices)
         for c in cell_indices:
