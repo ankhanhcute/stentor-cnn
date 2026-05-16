@@ -51,7 +51,7 @@ NaN labels are excluded from training and evaluation.
 
 ## Pipeline Overview
 
-The full workflow goes from raw video to a trained classifier in six stages:
+The full workflow goes from raw video to a trained classifier in seven stages:
 
 ```
 Raw video (.mp4)
@@ -63,37 +63,46 @@ Raw video (.mp4)
    Produces: *_tiled.h5, *_tiled_data.h5, *_contractions.h5
       │
       ▼
-2. Inspect & validate  (inspect_data.py, data_integrity.py)
-   inspect_data.py prints shapes, label distribution, and NaN counts.
+2. Inspect data  (inspect_data.py)
+   Prints shapes, dtypes, label distribution, and NaN counts for a recording.
+   Run this first to get a feel for the data before doing anything else.
+      │
+      ▼
+3. Load data  (loader.py)
+   load_tiles() and load_manual_labels() read the HDF5 files into numpy arrays.
+   StentorPairs wraps them into a PyTorch Dataset, pairing each pre/post frame
+   and skipping NaN-labeled stimuli.
+      │
+      ▼
+4. Data integrity & smoke test  (data_integrity.py, smoke_test.py)
    data_integrity.py runs automated checks on tile normalization, frame
-   pairing, and label format. Run these before training to catch bad data.
+   pairing, and label format to catch bad data early.
+   smoke_test.py saves a visual grid of pre/post pairs so you can manually
+   verify the tiles and labels look correct.
       │
       ▼
-3. Smoke test  (smoke_test.py)
-   Saves a visual grid of pre/post frame pairs to outputs/ so you can
-   manually verify the tiles and labels look correct.
-      │
-      ▼
-4. Holdfast detection  (find_holdfast.py, runs automatically inside loader.py)
+5. Holdfast detection  (find_holdfast.py, called by loader.py)
    For each cell tile, finds the holdfast — the foot where the cell attaches
-   to the substrate. Applies a circular mask (r=40 px) centered on the
-   holdfast so the model only sees the cell body, not background.
-   Produces: *_holdfasts.npy  (cached, reused on subsequent runs)
+   to the substrate. Results are cached as *_holdfasts.npy and reused
+   on subsequent runs.
       │
       ▼
-5. Training  (train.py)
-   Cells are shuffled and split into disjoint train / val / test sets so
-   the model never sees the same cell in both training and evaluation.
+6. Masking  (inside loader.py → StentorPairs.__getitem__)
+   Applies a circular mask (r=40 px) centered on the holdfast, zeroing out
+   everything outside it so the model only sees the cell body, not background.
+      │
+      ▼
+7. Training  (train.py)
+   Cells are split into disjoint train / val / test sets to prevent leakage.
    Each sample is a 2-channel image: [pre-stimulus frame, post-stimulus frame].
-   The CNN outputs a contraction probability; the best checkpoint (by val F1)
-   is saved automatically. A threshold sweep is printed at the end.
+   The best checkpoint (by val F1) is saved automatically. A threshold sweep
+   is printed at the end to help tune precision vs recall.
    Produces: checkpoints/best_model.pt, outputs/training_curves.png
       │
       ▼
-6. Failure analysis  (visualize_failures.py)
+8. Failure analysis  (visualize_failures.py)
    Loads the saved checkpoint and runs it on the held-out test cells.
-   Saves grids of false positives and false negatives so you can see
-   which stimulus-response pairs the model got wrong.
+   Saves grids of false positives and false negatives.
    Produces: outputs/visualize_failure*.png
 ```
 
@@ -137,9 +146,17 @@ python inspect_data.py ../tiles/RECORDING_tiled.h5 \
                        ../contraction/RECORDING_contractions.h5
 ```
 
-Prints shapes, dtypes, label distribution, and NaN counts.
+Prints shapes, label distribution, and NaN counts. Run this first to get a feel for the data.
 
-### 2. Validate data integrity
+### 2. Load data
+
+`loader.py` is a module, not a script — it is imported by the other scripts automatically. It exposes three public functions:
+
+- `load_tiles(tiled_h5, meta_h5)` — reads HDF5 tiles into a numpy array `(num_cells, H, W, total_frames)`
+- `load_manual_labels(contractions_h5)` — reads labels into a numpy array `(num_cells, total_stims)`
+- `StentorPairs(tiles, labels, cell_indices)` — PyTorch Dataset that pairs pre/post frames and skips NaN labels
+
+### 3. Validate data integrity and smoke test
 
 ```bash
 python data_integrity.py ../tiles/RECORDING_tiled.h5 \
@@ -149,17 +166,24 @@ python data_integrity.py ../tiles/RECORDING_tiled.h5 \
 
 Runs automated checks on tile normalization, frame pairing, and label format.
 
-### 3. Visual smoke test
-
 ```bash
 python smoke_test.py ../tiles/RECORDING_tiled.h5 \
                      ../meta/RECORDING_tiled_data.h5 \
                      ../contraction/RECORDING_contractions.h5
 ```
 
-Saves a grid of pre/post frame pairs to `outputs/` so you can visually verify the data looks correct before training.
+Saves a visual grid of pre/post frame pairs to `outputs/` so you can manually verify the tiles and labels look correct.
 
-### 4. Train
+### 4. Detect holdfasts (runs automatically during training)
+
+```bash
+python find_holdfast.py ../tiles/RECORDING_tiled.h5 \
+                        ../meta/RECORDING_tiled_data.h5
+```
+
+Detects each cell's attachment point and caches results to `../tiles/RECORDING_holdfasts.npy`. You can run this manually, but `loader.py` will also run it automatically on first use and reuse the cache on subsequent runs.
+
+### 5. Train
 
 ```bash
 python train.py ../tiles/RECORDING_tiled.h5 \
@@ -190,7 +214,7 @@ TEST_CELLS = None   # set to e.g. [19, 20, 21] to pin test cells
 
 Training saves the best checkpoint (by validation F1) to `checkpoints/best_model.pt` and writes loss/accuracy/F1 curves to `outputs/training_curves.png`. A threshold sweep on the test set (0.3–0.8) is printed at the end.
 
-### 5. Visualize failure cases
+### 6. Visualize failure cases
 
 ```bash
 python visualize_failures.py ../tiles/RECORDING_tiled.h5 \
@@ -200,15 +224,6 @@ python visualize_failures.py ../tiles/RECORDING_tiled.h5 \
 ```
 
 Saves grids of false positives and false negatives to `outputs/`.
-
-### 6. Detect holdfasts (optional, runs automatically during training)
-
-```bash
-python find_holdfast.py ../tiles/RECORDING_tiled.h5 \
-                        ../meta/RECORDING_tiled_data.h5
-```
-
-Detects each cell's attachment point and caches results to `../tiles/RECORDING_holdfasts.npy`. The loader uses this cache automatically on subsequent runs.
 
 Results vary by recording and cell-split randomness; run the threshold sweep printed after training to tune precision/recall for your use case.
 
