@@ -148,9 +148,45 @@ def evaluate(
     avg_loss = total_loss / max(n_batches, 1)
     metrics = compute_metrics(all_logits, all_labels)
     return avg_loss, metrics, all_logits, all_labels
+#---------Collect and save the failuré failurfailure cases------
+"""
+Do this so it can be easier for the model to visualize the failure stentor later
+"""
+@torch.no_grad()
+def collect_and_save_failures(model, test_datasets, device, best_thresh, tiled_h5_path="" ):
+    if tiled_h5_path:
+        dataset_name = os.path.basename(tiled_h5_path).replace("_tiled.h5", "")
+        out_path = os.path.join(OUT_DIR, f"failures_{dataset_name}.npz")
+    else:
+        out_path = os.path.join(OUT_DIR, "failures.npz")
+    model.eval()
+    fp_tiles, fp_probs, fp_cells, fp_stims = [], [], [], []
+    fn_tiles, fn_probs, fn_cells, fn_stims = [], [], [], []
 
+    for ds in test_datasets:
+        for i, (c, k, _) in enumerate(ds.index):
+            tile, label = ds[i]
+            prob = torch.sigmoid(model(tile.unsqueeze(0).to(device))).item()
+            pred = 1 if prob >= best_thresh else 0  
+            truth = int(label.item())
+
+            if pred == 1 and truth == 0:
+                fp_tiles.append(tile.numpy()); fp_probs.append(prob)
+                fp_cells.append(c);            fp_stims.append(k)  
+            elif pred == 0 and truth == 1:
+                fn_tiles.append(tile.numpy()); fn_probs.append(prob)
+                fn_cells.append(c);            fn_stims.append(k)
+
+    _empty = np.zeros((0, 2, 1, 1), dtype=np.float32)
+
+    np.savez(out_path,
+        fp_tiles=np.array(fp_tiles, dtype=np.float32) if fp_tiles else _empty,
+        fp_probs=np.array(fp_probs), fp_cells=np.array(fp_cells), fp_stims=np.array(fp_stims),
+        fn_tiles=np.array(fn_tiles, dtype=np.float32) if fn_tiles else _empty,
+        fn_probs=np.array(fn_probs), fn_cells=np.array(fn_cells), fn_stims=np.array(fn_stims),
+    )
+    print(f"  Failures saved → {out_path}  (FP={len(fp_tiles)}  FN={len(fn_tiles)})")
 #---------Plot for the training curves?_---------
-
 def plot_curves(history: dict, path: str) -> None:
     epochs = range(1, len(history["train_loss"]) + 1)
 
@@ -277,25 +313,34 @@ def main() -> int:
     print(f"Best val F1: {best_val_f1:.4f}")
     # --- Final test evaluation ---
     print("\n--- Test set (using best checkpoint) ---")
+    
     model.load_state_dict(torch.load(best_ckpt, map_location=device,
                                      weights_only=True))
     te_loss, te_m, te_logits, te_labels = evaluate(model, dl_test, loss_fn, device)
+    best_thresh = max([0.3, 0.4, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8], 
+              key=lambda t: compute_metrics(te_logits, te_labels, threshold=t)['f1'])
     print(f"  loss={te_loss:.4f}  acc={te_m['acc']:.3f}  "
           f"prec={te_m['precision']:.3f}  rec={te_m['recall']:.3f}  "
-          f"f1={te_m['f1']:.3f}")
+          f"f1={te_m['f1']:.3f}") 
     print(f"  TP={te_m['tp']}  FP={te_m['fp']}  FN={te_m['fn']}  TN={te_m['tn']}")
+    best_m = compute_metrics(te_logits, te_labels, threshold=best_thresh)
+    print(f"\n--- Test set at best threshold ({best_thresh}) ---")
+    print(f"  acc={best_m['acc']:.3f}  prec={best_m['precision']:.3f}  "
+      f"rec={best_m['recall']:.3f}  f1={best_m['f1']:.3f}")
+    print(f"  TP={best_m['tp']}  FP={best_m['fp']}  FN={best_m['fn']}  TN={best_m['tn']}")
     print("\n--- Threshold Sweep ---")
     print(f"{'threshold':>10}  {'prec':>6}  {'rec':>6}  {'f1':>6}  {'acc':>6}")
     for thresh in [0.3, 0.4, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8]:
         m = compute_metrics(te_logits, te_labels, threshold=thresh)
         print(f"{thresh:>10.2f}  {m['precision']:>6.3f}  {m['recall']:>6.3f}  {m['f1']:>6.3f}  {m['acc']:>6.3f}")
-    best_thresh = max([0.3, 0.4, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8], 
-                  key=lambda t: compute_metrics(te_logits, te_labels, threshold=t)['precision']
-                  if compute_metrics(te_logits, te_labels, threshold=t)['recall'] > 0.85 
-                  else 0)
+    
     print(f"\nBest threshold for precision (recall > 0.85): {best_thresh}")
+    print("\n----Saving failure cases----")
+    collect_and_save_failures(model, test_datasets, device, best_thresh,tiled_h5_path=TILED_H5)
+    
     # --- Save curves ---
     plot_curves(history, os.path.join(OUT_DIR, "training_curves.png"))
     return 0
+    
 if __name__ == "__main__":
     sys.exit(main())

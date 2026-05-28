@@ -24,6 +24,7 @@ import h5py
 import numpy as np
 import torch 
 from torch.utils.data import Dataset 
+from skimage.filters import median
 #-----low level loading-----
 def load_tiles(tiled_h5_path:str, meta_h5_path:str)  -> tuple[np.array, dict]:
     """
@@ -184,6 +185,10 @@ class StentorPairs(Dataset):
                 lab = manual[c, k]
                 if np.isnan(lab):
                     continue
+            
+                pre = self.tiles[c, :, :, 2 * k]
+                if np.sum(pre > 0.5) < 1000:
+                    continue
                 self.index.append((int(c), int(k), float(lab))) #cell, stimulus, label
     def __len__(self) -> int: #tell pytorch how many usable sample we have
         return len(self.index)
@@ -196,6 +201,9 @@ class StentorPairs(Dataset):
         mask = make_circular_mask(h, w, cy, cx, r=40)
         pre = pre * mask
         post = post * mask
+        
+        pre  = median(pre,  footprint=np.ones((3, 3)))
+        post = median(post, footprint=np.ones((3, 3)))
         x = np.stack([pre, post], axis=0)         # (2, H, W)
 
         return(
@@ -239,3 +247,7 @@ def make_cell_disjoint_split(
     val = sorted(shuffled[n_test:n_test + n_val])
     train = sorted(shuffled[n_test + n_val:])
     return train, val, test
+
+
+
+

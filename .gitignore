@@ -5,6 +5,7 @@
 *.h5
 *.mp4
 
+
 # Python cache
 __pycache__/
 *.pyc
@@ -17,6 +18,8 @@ stentor_cnn/output/
 *.pt
 *.onnx
 *.pth
+*.png
+*.npz
 
 # Mac junk
 .DS_Store
@@ -24,3 +27,8 @@ stentor_cnn/output/
 
 # Jupyter
 *.ipynb_checkpoints
+
+# Virtual environments
+venv/
+env/
+.env
