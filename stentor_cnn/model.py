@@ -22,29 +22,28 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F 
 
+# CLASS 1 — original 2D CNN
 class StentorCNN(nn.Module):
     def __init__(self, in_channels: int = 2, dropout: float = 0.3):
         super().__init__()
-
         self.block1 = self._conv_block(in_channels, 32)
         self.block2 = self._conv_block(32, 64)
         self.block3 = self._conv_block(64, 128)
         self.block4 = self._conv_block(128, 128)
-
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.dropout = nn.Dropout(dropout)
-        self.head = nn.Linear(128, 1)
+        # NO head here anymore, just returns 128 features
 
     @staticmethod
-    def _conv_block(in_ch: int, out_ch: int) -> nn.Sequential:
+    def _conv_block(in_ch, out_ch):
         return nn.Sequential(
             nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_ch), 
+            nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         x = self.block1(x)
         x = self.block2(x)
         x = self.block3(x)
@@ -52,7 +51,28 @@ class StentorCNN(nn.Module):
         x = self.pool(x)
         x = torch.flatten(x, 1)
         x = self.dropout(x)
-        x = self.head(x)
+        return x  # (batch, 128)
+
+
+# CLASS 2 — new sequence model
+class StentorSequenceModel(nn.Module):
+    def __init__(self, dropout: float = 0.3):
+        super().__init__()
+        self.backbone = StentorCNN(dropout=dropout)
+        self.conv1d = nn.Conv1d(128, 64, kernel_size=5, padding=2)
+        self.relu = nn.ReLU()
+        self.head = nn.Linear(64, 1)
+
+    def forward(self, x):
+        # x: (batch, num_stims, 2, 150, 150)
+        batch, num_stims, C, H, W = x.shape
+        x = x.view(batch * num_stims, C, H, W)  # (batch*stims, 2, 150, 150)
+        x = self.backbone(x)                     # (batch*stims, 128)
+        x = x.view(batch, num_stims, 128)        # (batch, stims, 128)
+        x = x.transpose(1, 2)                   # (batch, 128, stims)
+        x = self.relu(self.conv1d(x))            # (batch, 64, stims)
+        x = x.transpose(1, 2)                   # (batch, stims, 64)
+        x = self.head(x)                         # (batch, stims, 1)
         return x
 def count_params(model: nn.Module) -> int:
         return sum(p.numel() for p in model.parameters() if p.requires_grad)

@@ -176,44 +176,45 @@ class StentorPairs(Dataset):
                 result = find_holdfast(tiles[c], crop_size)
                 self.holdfasts.append(result['holdfast'])
             np.save(cache_path, np.array(self.holdfasts))
-        self.index: list[tuple[int, int, float]] = []
+        self.index: list[int] = []
         cell_indices = list(cell_indices)
         for c in cell_indices:
-            if not (0 <= c < num_cells_t):
+            if not (0 <= c < num_cells_t):  # add this back
                 raise IndexError(f"cell index {c} out of range [0, {num_cells_t})")
-            for k in range(total_stim):
-                lab = manual[c, k]
-                if np.isnan(lab):
-                    continue
-            
-                pre = self.tiles[c, :, :, 2 * k]
-                if np.sum(pre > 0.5) < 1000:
-                    continue
-                self.index.append((int(c), int(k), float(lab))) #cell, stimulus, label
+            self.index.append(c)   # just store the cell number, that's it
     def __len__(self) -> int: #tell pytorch how many usable sample we have
         return len(self.index)
     def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor]:
-        c, k, lab = self.index[i]
-        pre = self.tiles[c, :, :, 2 * k]
-        post = self.tiles[c, :, :, 2 * k + 1]
-        cy, cx = self.holdfasts[c]
-        h, w = pre.shape
-        mask = make_circular_mask(h, w, cy, cx, r=40)
-        pre = pre * mask
-        post = post * mask
+        c = self.index[i] #index just store in the cell number 
         
-        pre  = median(pre,  footprint=np.ones((3, 3)))
-        post = median(post, footprint=np.ones((3, 3)))
-        x = np.stack([pre, post], axis=0)         # (2, H, W)
-
-        return(
-            torch.from_numpy(x),
-            torch.tensor(lab, dtype=torch.float32),)
+        total_stims = self.manual.shape[1]
+        sequence = []
+        labels = []
+        for k in range(total_stims):
+            pre = self.tiles[c, :, :, 2 * k]
+            post = self.tiles[c, :, :, 2 * k + 1]
+            cy, cx = self.holdfasts[c]
+            h, w = pre.shape
+            mask = make_circular_mask(h, w, cy, cx, r=40)
+            pre = pre * mask
+            post = post * mask 
+            pre = median(pre, footprint=np.ones((3, 3)))
+            post = median(post, footprint=np.ones((3, 3)))
+            #apply mask and median filter into it 
+            sequence.append(np.stack([pre, post], axis=0)) #(2,H, W)
+            lab = self.manual[c,k]
+            labels.append(-1.0 if np.isnan(lab) else float(lab))      
+            
+        seq = np.stack(sequence, axis=0)
+        return (torch.from_numpy(seq), torch.tensor(labels, dtype=torch.float32),)
     def positive_fraction(self) -> float:
-        if not self.index:
-            return 0.0
-        return float(np.mean([lab for _, _, lab in self.index]))
-
+        labels = [
+            self.manual[c, k]
+            for c in self.index
+            for k in range(self.manual.shape[1])
+            if not np.isnan(self.manual[c,k])
+        ]
+        return float(np.mean(labels)) if labels else 0.0
 #-----build the train/val/test by cell-disjoint split
 
 def make_cell_disjoint_split(

@@ -22,7 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import loader
-from model import StentorCNN, count_params
+from model import StentorSequenceModel, count_params
 
 #------Configuration-------
 THIS_DIR = (os.path.dirname(os.path.abspath(__file__)))
@@ -44,7 +44,7 @@ GT_H5 = sys.argv[3]
 
 
 #-------Hyperparameters------
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 1e-4
 EPOCHS = 50
@@ -102,18 +102,19 @@ def train_one_epoch(
 
     for x, y in dl:
         x = x.to(device)
-        y = y.to(device).float().unsqueeze(1)
+        y = y.to(device).float()
 
         optimizer.zero_grad() #clear gradient from the prev batch
-        logits = model(x)
-        loss = loss_fn(logits, y)
+        logits = model(x).squeeze(-1)
+        mask = (y != -1)
+        loss = loss_fn(logits[mask], y[mask])
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item()
         n_batches += 1
-        all_logits.append(logits.detach())
-        all_labels.append(y.detach())
+        all_logits.append(logits[mask].detach())
+        all_labels.append(y[mask].detach())
 
     avg_loss = total_loss / max(n_batches, 1)
     metrics = compute_metrics(all_logits, all_labels)
@@ -262,7 +263,7 @@ def main() -> int:
     dl_test  = DataLoader(ds_test, batch_size=BATCH_SIZE, shuffle=False,
                           num_workers=0)
     # --- Model ---
-    model = StentorCNN(in_channels=2, dropout=DROPOUT).to(device)
+    model = StentorSquenceModel(dropout=DROPOUT).to(device)
     print(f"  model params: {count_params(model):,}")
     # --- Loss with pos_weight to handle class imbalance ---
     pos_weight = torch.tensor([(1 - pos_frac) / max(pos_frac, 1e-6)],
