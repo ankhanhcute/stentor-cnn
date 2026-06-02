@@ -135,21 +135,22 @@ def evaluate(
     all_labels: list[torch.Tensor] = []
 
     for x, y in dl:
-        x = x.to(device)
-        y = y.to(device).float().unsqueeze(1)
+        x = x.to(device) 
+        y = y.to(device).float()
 
-        logits = model(x)
-        loss = loss_fn(logits, y)
+        logits = model(x).squeeze(-1)
+        mask = (y != -1)
+        loss = loss_fn(logits[mask], y[mask])
 
         total_loss += loss.item()
         n_batches += 1
-        all_logits.append(logits)
-        all_labels.append(y)
+        all_logits.append(logits[mask])
+        all_labels.append(y[mask])
 
     avg_loss = total_loss / max(n_batches, 1)
     metrics = compute_metrics(all_logits, all_labels)
     return avg_loss, metrics, all_logits, all_labels
-#---------Collect and save the failuré failurfailure cases------
+#---------Collect and save the failuré cases------
 """
 Do this so it can be easier for the model to visualize the failure stentor later
 """
@@ -165,18 +166,23 @@ def collect_and_save_failures(model, test_datasets, device, best_thresh, tiled_h
     fn_tiles, fn_probs, fn_cells, fn_stims = [], [], [], []
 
     for ds in test_datasets:
-        for i, (c, k, _) in enumerate(ds.index):
-            tile, label = ds[i]
-            prob = torch.sigmoid(model(tile.unsqueeze(0).to(device))).item()
-            pred = 1 if prob >= best_thresh else 0  
-            truth = int(label.item())
-
-            if pred == 1 and truth == 0:
-                fp_tiles.append(tile.numpy()); fp_probs.append(prob)
-                fp_cells.append(c);            fp_stims.append(k)  
-            elif pred == 0 and truth == 1:
-                fn_tiles.append(tile.numpy()); fn_probs.append(prob)
-                fn_cells.append(c);            fn_stims.append(k)
+        for i, c in enumerate(ds.index):
+            seq, labels = ds[i]
+            probs = torch.sigmoid(model(seq.unsqueeze(0).to(device))).squeeze().cpu()
+            for k in range(len(labels)):
+                lab = labels[k].item()
+                if lab == -1:
+                    continue
+                prob = labels[k].item()
+                pred = 1 if  prob >= best_thres  else 0
+                truth = int(lab)
+                tile = seq[k]
+                if pred == 1 and truth == 0:
+                    fp_tiles.append(tile.numpy()); fp_probs.append(prob)
+                    fp_cells.append(c);            fp_stims.append(k)  
+                elif pred == 0 and truth == 1:
+                    fn_tiles.append(tile.numpy()); fn_probs.append(prob)
+                    fn_cells.append(c);            fn_stims.append(k)
 
     _empty = np.zeros((0, 2, 1, 1), dtype=np.float32)
 
@@ -263,7 +269,7 @@ def main() -> int:
     dl_test  = DataLoader(ds_test, batch_size=BATCH_SIZE, shuffle=False,
                           num_workers=0)
     # --- Model ---
-    model = StentorSquenceModel(dropout=DROPOUT).to(device)
+    model = StentorSequenceModel(dropout=DROPOUT).to(device)
     print(f"  model params: {count_params(model):,}")
     # --- Loss with pos_weight to handle class imbalance ---
     pos_weight = torch.tensor([(1 - pos_frac) / max(pos_frac, 1e-6)],
