@@ -97,8 +97,8 @@ def find_holdfast(tiles_cell, crop_size):
     bg_std = np.std(tiles_cell)
     artifact_mask = np.zeros((h, w), dtype=bool)
 
-    # Strategy 1 — contracted ball
-    post_indices = range(1, nf, 2)
+    # find holdfast through the center of contracted cell
+    post_indices = range(1, nf, 2) # look through post-frame to look for ball-like shape
     candidates = []
 
     for fi in post_indices:
@@ -147,7 +147,8 @@ def find_holdfast(tiles_cell, crop_size):
             'method': f"ball(f={best['frame']},a={int(best['area'])})"
         }
 
-    # Strategy 2 — skeleton fallback
+    # If a cell never contracts, it does not really matter whether or not we find the holdfast
+    # Defaulting to finding the end point of elongated cell
     pre_frames = tiles_cell[:, :, 0::2]
     baseline = np.median(pre_frames, axis=2).astype(np.float32)
     rest_mask, _ = segment_frame_for_holdfast(baseline, bg_mean, bg_std, artifact_mask, center, crop_size)
@@ -170,7 +171,7 @@ def find_holdfast(tiles_cell, crop_size):
             return {
                 'holdfast': (float(best_ep[0]), float(best_ep[1])),
                 'all_ball_positions': all_ball_positions,
-                'method': f"skeleton({len(eps)}ep)"
+                'method': f"cell_length"
             }
         ys, xs = np.where(rest_mask)
         dists = (ys - cy0)**2 + (xs - cx0)**2
@@ -181,7 +182,7 @@ def find_holdfast(tiles_cell, crop_size):
             'method': 'nearest_mask_pixel'
         }
 
-    # Strategy 3 — last resort
+    # return the center coordinates if no threshold works, or images are too blurry (can add the confident flag here)
     return {
         'holdfast': (cy0, cx0),
         'all_ball_positions': all_ball_positions,
