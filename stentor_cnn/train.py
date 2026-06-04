@@ -47,7 +47,7 @@ GT_H5 = sys.argv[3]
 BATCH_SIZE = 8
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 1e-4
-EPOCHS = 50
+EPOCHS = 100
 DROPOUT = 0.3
 SEED = 42
 
@@ -174,7 +174,7 @@ def collect_and_save_failures(model, test_datasets, device, best_thresh, tiled_h
                 if lab == -1:
                     continue
                 prob = labels[k].item()
-                pred = 1 if  prob >= best_thres  else 0
+                pred = 1 if  prob >= best_thresh  else 0
                 truth = int(lab)
                 tile = seq[k]
                 if pred == 1 and truth == 0:
