@@ -11,8 +11,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Model checkpoints and outputs
-stentor_cnn/checkpoints/
+# Model outputs
 stentor_cnn/outputs/
 stentor_cnn/output/
 *.pt
