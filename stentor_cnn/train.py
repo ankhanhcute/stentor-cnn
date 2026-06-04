@@ -350,7 +350,8 @@ def main() -> int:
     
     print(f"\nBest threshold for precision (recall > 0.85): {best_thresh}")
     print("\n----Saving failure cases----")
-    collect_and_save_failures(model, test_datasets, device, best_thresh,tiled_h5_path=TILED_H5)
+    for i, (tiled_path, _, _) in enumerate(recordings):
+        collect_and_save_failures(model, [test_datasets[i]], device, best_thresh, tiled_h5_path=tiled_path
     
     # --- Save curves ---
     plot_curves(history, os.path.join(OUT_DIR, "training_curves.png"))
