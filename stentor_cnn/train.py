@@ -27,7 +27,7 @@ from model import StentorSequenceModel, count_params
 #------Configuration-------
 THIS_DIR = (os.path.dirname(os.path.abspath(__file__)))
 PROJECT_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
-
+PRETRAIN_CKPT = os.path.join(THIS_DIR, "checkpoints/best_model.pt")
 sys.path.insert(0, THIS_DIR)
 
 if len(sys.argv) < 4 or (len(sys.argv) - 1) % 3 !=0 :
@@ -173,7 +173,7 @@ def collect_and_save_failures(model, test_datasets, device, best_thresh, tiled_h
                 lab = labels[k].item()
                 if lab == -1:
                     continue
-                prob = labels[k].item()
+                prob = probs[k].item()
                 pred = 1 if  prob >= best_thresh  else 0
                 truth = int(lab)
                 tile = seq[k]
@@ -263,19 +263,26 @@ def main() -> int:
     total_samp = sum(len(ds) for ds in train_datasets)
     pos_frac   = total_pos / max(total_samp, 1)
 
-    dl_train = DataLoader(ds_train, batch_size=BATCH_SIZE, shuffle=True, drop_last=False, num_workers=0)
+    dl_train = DataLoader(ds_train, batch_size=BATCH_SIZE, shuffle=True, drop_last=False, num_workers=4)
     dl_val = DataLoader(ds_val, batch_size=BATCH_SIZE, shuffle=False,
-                          num_workers=0)
+                          num_workers=4)
     dl_test  = DataLoader(ds_test, batch_size=BATCH_SIZE, shuffle=False,
-                          num_workers=0)
+                          num_workers=4)
     # --- Model ---
     model = StentorSequenceModel(dropout=DROPOUT).to(device)
     print(f"  model params: {count_params(model):,}")
+    #----Fine-tune from the pretrained checkpoints if it exists---
+    if PRETRAIN_CKPT and os.path.exists(PRETRAIN_CKPT):
+        model.load_state_dict(torch.load(PRETRAIN_CKPT, map_location=device, weights_only=True))
+        print(f" loaded pretrained weights from {PRETRAIN_CKPT}")
+    else:
+        print(f" training from scratch (no pretrained model or checkpoint!!!)")
     # --- Loss with pos_weight to handle class imbalance ---
     pos_weight = torch.tensor([(1 - pos_frac) / max(pos_frac, 1e-6)],
                               device=device)
     print(f"  pos_weight: {pos_weight.item():.2f}")
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    
     # --- Optimizer + scheduler ---
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE,
                                  weight_decay=WEIGHT_DECAY)
