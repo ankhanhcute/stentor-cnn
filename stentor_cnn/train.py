@@ -287,7 +287,7 @@ def main() -> int:
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE,
                                  weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="max", factor=0.5, patience=7)
+        optimizer, mode="max", factor=0.5, patience=15)
 
     # --- Training loop ---
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
