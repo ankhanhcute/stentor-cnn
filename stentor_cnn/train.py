@@ -44,8 +44,8 @@ GT_H5 = sys.argv[3]
 
 
 #-------Hyperparameters------
-BATCH_SIZE = 8
-LEARNING_RATE = 1e-3
+BATCH_SIZE = 16
+LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-4
 EPOCHS = 100
 DROPOUT = 0.3
