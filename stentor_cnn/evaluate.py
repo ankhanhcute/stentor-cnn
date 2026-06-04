@@ -24,7 +24,7 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, THIS_DIR)
 
 import loader
-from model import StentorCNN, count_params
+from model import StentorSequenceModel, count_params
 
 # ---- Config ----
 BATCH_SIZE = 32
@@ -70,13 +70,14 @@ def evaluate(model, dl, loss_fn, device):
     all_logits, all_labels = [], []
     for x, y in dl:
         x = x.to(device)
-        y = y.to(device).float().unsqueeze(1)
-        logits = model(x)
-        loss   = loss_fn(logits, y)
+        y = y.to(device).float()
+        logits = model(x).squeeze(-1)
+        mask = (y != -1)
+        loss   = loss_fn(logits[mask], y[mask])
         total_loss += loss.item()
         n_batches  += 1
-        all_logits.append(logits)
-        all_labels.append(y)
+        all_logits.append(logits[mask])
+        all_labels.append(y[mask])
     return total_loss / max(n_batches, 1), all_logits, all_labels
 
 # ---- Save failures ----
@@ -87,16 +88,22 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
     fn_tiles, fn_probs, fn_cells, fn_stims = [], [], [], []
     for ds in ds_list:
         for i, (c, k, _) in enumerate(ds.index):
-            tile, label = ds[i]
-            prob  = torch.sigmoid(model(tile.unsqueeze(0).to(device))).item()
-            pred  = 1 if prob >= threshold else 0
-            truth = int(label.item())
-            if pred == 1 and truth == 0:
-                fp_tiles.append(tile.numpy()); fp_probs.append(prob)
-                fp_cells.append(c);            fp_stims.append(k)
-            elif pred == 0 and truth == 1:
-                fn_tiles.append(tile.numpy()); fn_probs.append(prob)
-                fn_cells.append(c);            fn_stims.append(k)
+            seq, label = ds[i]
+            probs  = torch.sigmoid(model(tile.unsqueeze(0).to(device))).squeeze().cpu()
+            for k in range(len(labels)):
+                lab = labels[k].item()
+                if lab == -1:
+                    continue
+                prop = probs[k].item()
+                pred  = 1 if prob >= threshold else 0
+                truth = int(label.item())
+                tiles = seq[k]
+                if pred == 1 and truth == 0:
+                    fp_tiles.append(tile.numpy()); fp_probs.append(prob)
+                    fp_cells.append(c);            fp_stims.append(k)
+                elif pred == 0 and truth == 1:
+                    fn_tiles.append(tile.numpy()); fn_probs.append(prob)
+                    fn_cells.append(c);            fn_stims.append(k)
     _empty   = np.zeros((0, 2, 1, 1), dtype=np.float32)
     out_path = os.path.join(OUT_DIR, f"failures_{dataset_name}.npz")
     np.savez(out_path,
@@ -133,7 +140,7 @@ def main():
     print(f"  positive frac : {pos_frac:.3f}\n")
 
     # load model
-    model = StentorCNN(in_channels=2, dropout=DROPOUT).to(device)
+    model = StentorSequenceModel(dropout=DROPOUT).to(device)
     model.load_state_dict(torch.load(CHECKPOINT, map_location=device, weights_only=True))
     print(f"  model params: {count_params(model):,}")
 
