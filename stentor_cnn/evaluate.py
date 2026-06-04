@@ -88,23 +88,23 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
     fn_tiles, fn_probs, fn_cells, fn_stims = [], [], [], []
     for ds in ds_list:
         for i, c in enumerate(ds.index):
-            seq, label = ds[i]
-            probs  = torch.sigmoid(model(tiles.unsqueeze(0).to(device))).squeeze().cpu()
+            seq, labels = ds[i]
+            probs = torch.sigmoid(model(seq.unsqueeze(0).to(device))).squeeze().cpu()
             for k in range(len(labels)):
                 lab = labels[k].item()
                 if lab == -1:
                     continue
-                prop = probs[k].item()
-                pred  = 1 if prob >= threshold else 0
-                truth = int(label.item())
-                tiles = seq[k]
+                prob = probs[k].item()
+                pred = 1 if prob >= threshold else 0
+                truth = int(lab)
+                tile = seq[k]
                 if pred == 1 and truth == 0:
                     fp_tiles.append(tile.numpy()); fp_probs.append(prob)
                     fp_cells.append(c);            fp_stims.append(k)
                 elif pred == 0 and truth == 1:
                     fn_tiles.append(tile.numpy()); fn_probs.append(prob)
                     fn_cells.append(c);            fn_stims.append(k)
-    _empty   = np.zeros((0, 2, 1, 1), dtype=np.float32)
+    _empty = np.zeros((0, 2, 1, 1), dtype=np.float32)
     out_path = os.path.join(OUT_DIR, f"failures_{dataset_name}.npz")
     np.savez(out_path,
         fp_tiles=np.array(fp_tiles, dtype=np.float32) if fp_tiles else _empty,
