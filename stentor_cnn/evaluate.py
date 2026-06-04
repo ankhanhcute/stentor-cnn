@@ -89,7 +89,7 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
     for ds in ds_list:
         for i, c in enumerate(ds.index):
             seq, label = ds[i]
-            probs  = torch.sigmoid(model(tile.unsqueeze(0).to(device))).squeeze().cpu()
+            probs  = torch.sigmoid(model(tiles.unsqueeze(0).to(device))).squeeze().cpu()
             for k in range(len(labels)):
                 lab = labels[k].item()
                 if lab == -1:
