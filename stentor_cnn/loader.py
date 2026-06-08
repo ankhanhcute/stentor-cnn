@@ -176,6 +176,25 @@ class StentorPairs(Dataset):
                 result = find_holdfast(tiles[c], crop_size)
                 self.holdfasts.append(result['holdfast'])
             np.save(cache_path, np.array(self.holdfasts))
+        processed_cache = tiled_h5_path.replace(".h5", "_processed.npy")
+        if processed_cache and os.path.exists(processed_cache):
+            self.processed = np.load(processed_cache, mmap_mode='r')
+        else:
+            print(f" Computing processed cache for {os.path.basename(tiled_h5_path)}...")
+            processed = np.empty_like(tiles)
+            for c in range(tiles.shape[0]):
+                cy, cx = self.holdfasts[c]
+                h, w = tiles.shape[1], tiles.shape[2]
+                mask = make_circular_mask(h, w, cy, cx, r=40)
+                for f in range(tiles.shape[3]):
+                    frame = tiles[c, :, :, f] * mask
+                    processed[c, :, :, f] = median(frame, footprint=np.ones((3, 3)))
+                if processed_cache:
+                    np.save(processed_cache, processed)
+                    self.processed = np.load(processed_cache, mmap_mode='r')
+                else:
+                    self.processed = processed
+            
         self.index: list[int] = []
         cell_indices = list(cell_indices)
         max_nan_frac = 0.75
@@ -196,15 +215,8 @@ class StentorPairs(Dataset):
         sequence = []
         labels = []
         for k in range(total_stims):
-            pre = self.tiles[c, :, :, 2 * k]
-            post = self.tiles[c, :, :, 2 * k + 1]
-            cy, cx = self.holdfasts[c]
-            h, w = pre.shape
-            mask = make_circular_mask(h, w, cy, cx, r=40)
-            pre = pre * mask
-            post = post * mask 
-            pre = median(pre, footprint=np.ones((3, 3)))
-            post = median(post, footprint=np.ones((3, 3)))
+            pre = self.processed[c, :, :, 2 * k]
+            post = self.processed[c, :, :, 2 * k + 1]
             #apply mask and median filter into it 
             sequence.append(np.stack([pre, post], axis=0)) #(2,H, W)
             lab = self.manual[c,k]
