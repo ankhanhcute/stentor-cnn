@@ -3,6 +3,86 @@ from scipy import ndimage
 from skimage.morphology import skeletonize, binary_closing, binary_opening
 from skimage.measure import label 
 
+def detect_static_artifacts(tiles_cell, bg_mean, artifact_k=0.4, holdfast_protect_r=20):
+    """
+    Detects persistent dark artifacts (dish edges, debris) that appear
+    across all frames — these are NOT the holdfast.
+
+    Strategy:
+      1. Compute per-pixel darkness across all frames: bg_mean - pixel
+      2. Take minimum across frames — only pixels dark in EVERY frame survive
+      3. Threshold to find persistently dark regions
+      4. Label connected components
+      5. Keep components that look like artifacts:
+         - touches tile border AND high aspect ratio (dish edge)
+         - large blob far from center touching border
+      6. Protect the holdfast region near center from exclusion
+
+    Returns: artifact_mask (bool array, H x W)
+    """
+    from skimage.filters import gaussian
+    from skimage.morphology import binary_dilation, disk as skdisk
+    from skimage.measure import label as sk_label
+
+    h, w, nf = tiles_cell.shape
+
+    # Darkness map: bg_mean - pixel. High = persistently dark
+    darkness = bg_mean - tiles_cell  # (H, W, nf)
+    persistent = np.min(darkness, axis=2)  # minimum across frames
+    persistent_s = gaussian(persistent, sigma=2)
+
+    # Threshold: pixels persistently darker than artifact_k * bg_std
+    bg_std = np.std(tiles_cell[:, :, 0])
+    thr = artifact_k * max(bg_std, 0.01)
+    artifact_raw = persistent_s > thr
+
+    # Label connected components
+    labeled = sk_label(artifact_raw)
+    n_labels = labeled.max()
+    if n_labels == 0:
+        return np.zeros((h, w), dtype=bool)
+
+    cy0, cx0 = h / 2.0, w / 2.0
+    artifact_mask = np.zeros((h, w), dtype=bool)
+
+    for comp_id in range(1, n_labels + 1):
+        comp = labeled == comp_id
+        inds = np.argwhere(comp)
+        if len(inds) == 0:
+            continue
+
+        ys, xs = inds[:, 0], inds[:, 1]
+        area = len(inds)
+        cy_comp = np.mean(ys)
+        cx_comp = np.mean(xs)
+        dist_to_center = np.sqrt((cy_comp - cy0)**2 + (cx_comp - cx0)**2)
+
+        y_span = ys.max() - ys.min() + 1
+        x_span = xs.max() - xs.min() + 1
+        aspect = max(y_span, x_span) / max(min(y_span, x_span), 1)
+
+        touches_border = (
+            np.any(ys == 0) or np.any(ys == h - 1) or
+            np.any(xs == 0) or np.any(xs == w - 1)
+        )
+
+        is_artifact = False
+        if aspect > 5 and touches_border:
+            is_artifact = True
+        if area > 200 and dist_to_center > 30 and touches_border:
+            is_artifact = True
+        if touches_border and area > 50 and dist_to_center > 25:
+            is_artifact = True
+
+        if is_artifact:
+            for y, x in inds:
+                if (y - cy0)**2 + (x - cx0)**2 > holdfast_protect_r**2:
+                    artifact_mask[y, x] = True
+
+    # Dilate slightly so edges don't leak into segmentation
+    artifact_mask = binary_dilation(artifact_mask, skdisk(2))
+    return artifact_mask
+
 def score_component(comp_mask, center, crop_size):
     area = np.sum(comp_mask)
     if area < 5:
@@ -95,7 +175,7 @@ def find_holdfast(tiles_cell, crop_size):
 
     bg_mean = np.mean(tiles_cell)
     bg_std = np.std(tiles_cell)
-    artifact_mask = np.zeros((h, w), dtype=bool)
+    artifact_mask = detect_static_artifacts(h, w), dtype=bool)
 
     # find holdfast through the center of contracted cell
     post_indices = range(1, nf, 2) # look through post-frame to look for ball-like shape
