@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 THIS_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJ_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 CNN_DIR   = os.path.join(PROJ_ROOT, "stentor_cnn")
+PRETRAIN_CKPT = os.path.join(PROJ_ROOT, "stentor_cnn", "checkpoints:, "best_model.pt")
 sys.path.insert(0, CNN_DIR)
 
 import loader
@@ -177,8 +178,11 @@ def main():
     dl_val   = DataLoader(ds_val,   batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
     model = StentorSequenceModel(dropout=DROPOUT).to(device)
-    print(f"  params: {count_params(model):,}  (training from scratch)")
-
+    if os.path.exists(PRETRAIN_CKPT):
+        model.load_state_dict(torch.load(PRETRAIN_CKPT, map_location=device, weights_only=True))
+        print(f" params: {count_params(model):,} (fine_tuning from {PRETRAIN_CKPT})")
+    else:
+        print(f" params: {count_params(model):,} (training from scratch)")
     pos_weight = torch.tensor([(1 - pos_frac) / max(pos_frac, 1e-6)], device=device)
     print(f"  pos_weight: {pos_weight.item():.2f}")
     loss_fn   = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
