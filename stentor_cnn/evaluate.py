@@ -216,12 +216,13 @@ def main():
     print(f"\n--- Saving failures ---")
     save_failures(model, [ds], device, best_thresh, dataset_name)
     #predict all
-    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, best_thresh):
+    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, best_thresh)
         
-    with open(os.path.join(OUT_DIR, f"prediction_{data_name}.json"), "w") as f:
+    with open(os.path.join(OUT_DIR, f"predictions_{dataset_name}.json"), "w") as f:
         json.dump(all_predictions, f, indent=2)
-    with open(os.path.join(OUT_DIR. f"uncertain_{dataset_name}.json"), "w") as f:
+    with open(os.path.join(OUT_DIR, f"uncertain_{dataset_name}.json"), "w") as f:
         json.dump(uncertain_stimuli, f, indent=2)
     print(f"  predictions saved → outputs/predictions_{dataset_name}.json")
     print(f"  uncertain saved   → outputs/uncertain_{dataset_name}.json")
+if __name__ == "__main__":
     main()
