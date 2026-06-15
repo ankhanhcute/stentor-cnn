@@ -175,8 +175,7 @@ def find_holdfast(tiles_cell, crop_size):
 
     bg_mean = np.mean(tiles_cell)
     bg_std = np.std(tiles_cell)
-    artifact_mask = detect_static_artifacts(h, w), dtype=bool)
-
+    artifact_mask = detect_static_artifacts(tiles_cell, bg_mean)
     # find holdfast through the center of contracted cell
     post_indices = range(1, nf, 2) # look through post-frame to look for ball-like shape
     candidates = []
