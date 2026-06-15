@@ -34,15 +34,6 @@ CHECKPOINT = os.path.join(THIS_DIR, "checkpoints", "best_model.pt")
 OUT_DIR = os.path.join(THIS_DIR, "outputs")
 os.makedirs(OUT_DIR, exist_ok=True)
 
-if len(sys.argv) < 4:
-    print("Usage: python evaluate.py <tiled.h5> <meta.h5> <contractions.h5> [checkpoint.pt]")
-    sys.exit(1)
-
-TILED_H5 = sys.argv[1]
-META_H5  = sys.argv[2]
-GT_H5    = sys.argv[3]
-if len(sys.argv) > 4:
-    CHECKPOINT = sys.argv[4]
 
 # ---- Metrics ----
 def compute_metrics(all_logits, all_labels, threshold=0.5):
@@ -225,4 +216,12 @@ def main():
     print(f"  predictions saved → outputs/predictions_{dataset_name}.json")
     print(f"  uncertain saved   → outputs/uncertain_{dataset_name}.json")
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 4:
+        print("Usage: python evaluate.py <tiled.h5> <meta.h5> <contractions.h5> [checkpoint.pt]")
+        sys.exit(1)
+    TILED_H5 = sys.argv[1]
+    META_H5  = sys.argv[2]
+    GT_H5    = sys.argv[3]
+    if len(sys.argv) > 4:
+        CHECKPOINT = sys.argv[4]
+    main(TILED_H5, META_H5, GT_H5)
