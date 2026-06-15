@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, ConcatDataset
+import json
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, THIS_DIR)
@@ -79,8 +80,43 @@ def evaluate(model, dl, loss_fn, device):
         all_logits.append(logits[mask])
         all_labels.append(y[mask])
     return total_loss / max(n_batches, 1), all_logits, all_labels
-
-# ---- Save failures ----
+#---- Predict and save all of them----
+@torch.no_grad()
+def predict_all(model, ds_list, device, threshold):
+    model.eval()
+    all_predictions = []
+    uncertain_stimuli = []
+    for ds in ds_list:
+        for i, c in enumerate(ds.index):
+            seq, labels = ds[i]
+            probs = torch.sigmoid(model(seq.unsqueeze(0).to(device))).squeeze().cpu()
+            for k in range(len(labels)):
+                lab = labels[k].item()
+                prob = probs[k].item()
+                if lab == -1:
+                    uncertainty = True
+                elif prob >= threshold:
+                    uncertainty = abs(prob - threshold) < 0.05
+                else:
+                    uncertainty = abs(prob - threshold) < 0.1
+                if uncertainty:
+                    pred = None
+                else:
+                    pred = 1 if prob >= threshold else 0 
+                all_predictions.append({
+                "cell": c, 
+                "stimulus": k, 
+                "prediction": pred, 
+                "probability": round(prob, 4)
+                })
+                if pred is None:
+                    uncertain_stimuli.append({
+                "cell":c, 
+                "stimulus":k, 
+                "probability": round(prob, 4)
+                })
+    return all_predictions, uncertain_stimuli
+#---- Save failures ----
 @torch.no_grad()
 def save_failures(model, ds_list, device, threshold, dataset_name):
     model.eval()
@@ -92,18 +128,26 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
             probs = torch.sigmoid(model(seq.unsqueeze(0).to(device))).squeeze().cpu()
             for k in range(len(labels)):
                 lab = labels[k].item()
-                if lab == -1:
-                    continue
                 prob = probs[k].item()
-                pred = 1 if prob >= threshold else 0
-                truth = int(lab)
-                tile = seq[k]
-                if pred == 1 and truth == 0:
-                    fp_tiles.append(tile.numpy()); fp_probs.append(prob)
-                    fp_cells.append(c);            fp_stims.append(k)
-                elif pred == 0 and truth == 1:
-                    fn_tiles.append(tile.numpy()); fn_probs.append(prob)
-                    fn_cells.append(c);            fn_stims.append(k)
+                if lab == -1:
+                    uncertainty = True 
+                elif prob >= threshold:
+                    uncertainty = abs(prob - threshold) < 0.05
+                else:
+                    uncertainty = abs(prob - threshold) < 0.1
+                if uncertainty:
+                    pred = None
+                else:
+                    pred = 1 if prob >= threshold else 0
+                if pred is not None:   
+                    truth = int(lab)
+                    tile = seq[k]
+                    if pred == 1 and truth == 0:
+                        fp_tiles.append(tile.numpy()); fp_probs.append(prob)
+                        fp_cells.append(c);            fp_stims.append(k)
+                    elif pred == 0 and truth == 1:
+                        fn_tiles.append(tile.numpy()); fn_probs.append(prob)
+                        fn_cells.append(c);            fn_stims.append(k)
     _empty = np.zeros((0, 2, 1, 1), dtype=np.float32)
     out_path = os.path.join(OUT_DIR, f"failures_{dataset_name}.npz")
     np.savez(out_path,
@@ -171,6 +215,13 @@ def main():
     dataset_name = os.path.basename(TILED_H5).replace("_tiled.h5", "")
     print(f"\n--- Saving failures ---")
     save_failures(model, [ds], device, best_thresh, dataset_name)
-
-if __name__ == "__main__":
+    #predict all
+    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, best_thresh):
+        
+    with open(os.path.join(OUT_DIR, f"prediction_{data_name}.json"), "w") as f:
+        json.dump(all_predictions, f, indent=2)
+    with open(os.path.join(OUT_DIR. f"uncertain_{dataset_name}.json"), "w") as f:
+        json.dump(uncertain_stimuli, f, indent=2)
+    print(f"  predictions saved → outputs/predictions_{dataset_name}.json")
+    print(f"  uncertain saved   → outputs/uncertain_{dataset_name}.json")
     main()
