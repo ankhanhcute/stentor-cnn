@@ -1,7 +1,7 @@
 """
 train.py
 --------
-Train StentorCNN on raw pre/post frame pairs.
+Train StentorCNN on a sequence of pre/post frames of each cell.
 Usage (from project root):
     python stentor_cnn/train.py
 All paths and hyperparameters are set as constants at the top of the file.
@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
+import json
 import loader
 from model import StentorSequenceModel, count_params
 
@@ -287,7 +287,7 @@ def main() -> int:
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE,
                                  weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="max", factor=0.5, patience=15)
+        optimizer, mode="max", factor=0.7, patience=15)
 
     # --- Training loop ---
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
@@ -349,9 +349,11 @@ def main() -> int:
         print(f"{thresh:>10.2f}  {m['precision']:>6.3f}  {m['recall']:>6.3f}  {m['f1']:>6.3f}  {m['acc']:>6.3f}")
     
     print(f"\nBest threshold for precision (recall > 0.85): {best_thresh}")
+    with open(os.path.join(CHECKPOINT_DIR, "best_thresh.json"), "w") as f:
+        json.dump({"threshold": best_thresh}, f)
     print("\n----Saving failure cases----")
     for i, (tiled_path, _, _) in enumerate(recordings):
-        collect_and_save_failures(model, [test_datasets[i]], device, best_thresh, tiled_h5_path=tiled_path
+        collect_and_save_failures(model, [test_datasets[i]], device, best_thresh, tiled_h5_path=tiled_path)
     
     # --- Save curves ---
     plot_curves(history, os.path.join(OUT_DIR, "training_curves.png"))
