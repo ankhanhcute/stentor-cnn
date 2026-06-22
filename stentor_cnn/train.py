@@ -1,11 +1,23 @@
 """
 train.py
 --------
-Train StentorCNN on a sequence of pre/post frames of each cell.
-Usage (from project root):
-    python stentor_cnn/train.py
-All paths and hyperparameters are set as constants at the top of the file.
-Edit them directly — no argparse complexity for a single-dataset project.
+Train StentorSequenceModel on sequences of pre/post stimulus frame pairs per cell,
+across one or more datasets.
+
+Saves:
+  - checkpoints/best_model.pt       — best model by val F1
+  - checkpoints/best_thresh.json    — F1-optimal decision threshold (used by predict.py)
+  - outputs/failures_{dataset}.npz  — FP/FN tiles for visualization
+
+Usage:
+    python train.py <tiled.h5> <meta.h5> <contractions.h5>
+
+Multiple datasets:
+    python train.py \\
+        tiles/2024_11_07_tiled.h5 meta/2024_11_07_tiled_data.h5 contraction/2024_11_07_contractions.h5 \\
+        tiles/2024_11_09_tiled.h5 meta/2024_11_09_tiled_data.h5 contraction/2024_11_09_contractions.h5
+
+Note: run build_cache.py or preprocess.sbatch before training to avoid GPU bottleneck.
 """
 from __future__ import annotations 
 import sys
@@ -30,17 +42,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 PRETRAIN_CKPT = os.path.join(THIS_DIR, "checkpoints/best_model.pt")
 sys.path.insert(0, THIS_DIR)
 
-if len(sys.argv) < 4 or (len(sys.argv) - 1) % 3 !=0 :
-    print(f"Usage: python train.py <tiled.h5> <meta.h5> <contractions.h5>")
-    sys.exit(1)
-
 recordings = []
-for i in range(1, len(sys.argv), 3):
-    recordings.append((sys.argv[i], sys.argv[i+1], sys.argv[i+2]))
-
-TILED_H5 = sys.argv[1]
-META_H5 = sys.argv[2]
-GT_H5 = sys.argv[3]
 
 
 #-------Hyperparameters------
@@ -162,38 +164,62 @@ def collect_and_save_failures(model, test_datasets, device, best_thresh, tiled_h
     else:
         out_path = os.path.join(OUT_DIR, "failures.npz")
     model.eval()
+
     fp_tiles, fp_probs, fp_cells, fp_stims = [], [], [], []
     fn_tiles, fn_probs, fn_cells, fn_stims = [], [], [], []
-
+    unc_tiles, unc_probs, unc_cells, unc_stims, unc_source = [], [], [], [], [] 
     for ds in test_datasets:
         for i, c in enumerate(ds.index):
             seq, labels = ds[i]
             probs = torch.sigmoid(model(seq.unsqueeze(0).to(device))).squeeze().cpu()
             for k in range(len(labels)):
                 lab = labels[k].item()
-                if lab == -1:
-                    continue
                 prob = probs[k].item()
-                pred = 1 if  prob >= best_thresh  else 0
-                truth = int(lab)
                 tile = seq[k]
+                if lab == -1:
+                    unc_tiles.append(tile.numpy()); unc_probs.append(prob)
+                    unc_cells.append(c);            unc_stims.append(k)
+                    unc_source.append("nan")
+                    continue
+                truth = int(lab)
+                if prob >= best_thresh:
+                    pred, uncertain = 1, (prob - best_thresh) < 0.05 
+                else:
+                    pred, uncertain = 0 , (best_thresh - prob) < 0.10
                 if pred == 1 and truth == 0:
-                    fp_tiles.append(tile.numpy()); fp_probs.append(prob)
-                    fp_cells.append(c);            fp_stims.append(k)  
+                    if uncertain:
+                        unc_tiles.append(tile.numpy()); unc_probs.append(prob)
+                        unc_cells.append(c);            unc_stims.append(k)
+                        unc_source.append("fp")
+                    else:
+                        fp_tiles.append(tile.numpy()); fp_probs.append(prob)
+                        fp_cells.append(c);            fp_stims.append(k)
+                        
                 elif pred == 0 and truth == 1:
-                    fn_tiles.append(tile.numpy()); fn_probs.append(prob)
-                    fn_cells.append(c);            fn_stims.append(k)
-
+                    if uncertain:
+                        unc_tiles.append(tile.numpy()); unc_probs.append(prob)
+                        unc_cells.append(c);            unc_stims.append(k)
+                        unc_source.append("fn")
+                    else:
+                        fn_tiles.append(tile.numpy()); fn_probs.append(prob)
+                        fn_cells.append(c);            fn_stims.append(k)
+                    
     _empty = np.zeros((0, 2, 1, 1), dtype=np.float32)
-
     np.savez(out_path,
         fp_tiles=np.array(fp_tiles, dtype=np.float32) if fp_tiles else _empty,
         fp_probs=np.array(fp_probs), fp_cells=np.array(fp_cells), fp_stims=np.array(fp_stims),
         fn_tiles=np.array(fn_tiles, dtype=np.float32) if fn_tiles else _empty,
         fn_probs=np.array(fn_probs), fn_cells=np.array(fn_cells), fn_stims=np.array(fn_stims),
+        unc_tiles=np.array(unc_tiles, dtype=np.float32) if unc_tiles else _empty,
+        unc_probs=np.array(unc_probs), unc_cells=np.array(unc_cells), unc_stims=np.array(unc_stims),
+        unc_source=np.array(unc_source) if unc_source else np.array([], dtype='<U3')
+        
     )
     print(f"  Failures saved → {out_path}  (FP={len(fp_tiles)}  FN={len(fn_tiles)})")
-#---------Plot for the training curves?_---------
+    print(f"    confident wrong: FP={len(fp_tiles)}  FN={len(fn_tiles)}")
+    print(f"    uncertain (not-confident FP+FN+NaN): {len(unc_tiles)}   <- compare to predict_all's n_uncertain")
+    
+#---plot curves----
 def plot_curves(history: dict, path: str) -> None:
     epochs = range(1, len(history["train_loss"]) + 1)
 
@@ -358,6 +384,14 @@ def main() -> int:
     # --- Save curves ---
     plot_curves(history, os.path.join(OUT_DIR, "training_curves.png"))
     return 0
-    
+
+
 if __name__ == "__main__":
+    if len(sys.argv) < 4 or (len(sys.argv) - 1) % 3 != 0:
+        print(f"Usage: python train.py <tiled.h5> <meta.h5> <contractions.h5>")
+        sys.exit(1)
+
+    for i in range(1, len(sys.argv), 3):
+        recordings.append((sys.argv[i], sys.argv[i + 1], sys.argv[i + 2]))
+
     sys.exit(main())

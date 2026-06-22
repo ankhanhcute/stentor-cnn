@@ -31,3 +31,6 @@ stentor_cnn/output/
 venv/
 env/
 .env
+*.npy
+*.npy
+*.npy
