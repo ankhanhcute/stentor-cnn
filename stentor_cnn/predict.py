@@ -31,15 +31,6 @@ THRESH_FILE = os.path.join(THIS_DIR, "checkpoints", "best_thresh.json")
 OUT_DIR = os.path.join(THIS_DIR, "outputs")
 os.makedirs(OUT_DIR, exist_ok=True)
 
-#----parse args----
-if len(sys.argv) < 3:
-    print("Usage: python predict.py <tiled.h5> <meta.h5> [checkpoint.pt]")
-    sys.exit(1)
-    
-TILED_H5 = sys.argv[1]
-META_H5 = sys.argv[2]
-if len(sys.argv) > 3:
-    CHECKPOINT = sys.argv[3]
     
 
 #----main----
@@ -90,4 +81,11 @@ def main():
     print(f"uncertain saved   → {unc_path}")
  
 if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("Usage: python predict.py <tiled.h5> <meta.h5> [checkpoint.pt]")
+        sys.exit(1)
+    TILED_H5 = sys.argv[1]
+    META_H5 = sys.argv[2]
+    if len(sys.argv) > 3:
+        CHECKPOINT = sys.argv[3]
     main()
