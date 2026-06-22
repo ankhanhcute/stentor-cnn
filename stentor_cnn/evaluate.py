@@ -131,7 +131,7 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
                 if prob >= threshold:
                     pred, uncertain = 1, (prob - threshold) < 0.05 
                 else:
-                    pred, uncertain = 0 , (prob - threshold) < 0.10
+                    pred, uncertain = 0 , (threshold - prob) < 0.10
                 if pred == 1 and truth == 0:
                     if uncertain:
                         unc_tiles.append(tile.numpy()); unc_probs.append(prob)
@@ -164,7 +164,7 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
     )
     print(f"  Failures saved → {out_path}  (FP={len(fp_tiles)}  FN={len(fn_tiles)})")
     print(f"    confident wrong: FP={len(fp_tiles)}  FN={len(fn_tiles)}")
-    print(f"    uncertain (not-confident FP+FN+NaN): {len(unc_tiles)}   <- compare to predict_all's n_uncertain"
+    print(f"    uncertain (not-confident FP+FN+NaN): {len(unc_tiles)}   <- compare to predict_all's n_uncertain")
 # ---- Main ----
 def main():
     device = (
@@ -240,4 +240,4 @@ if __name__ == "__main__":
     GT_H5    = sys.argv[3]
     if len(sys.argv) > 4:
         CHECKPOINT = sys.argv[4]
-    main(TILED_H5, META_H5, GT_H5)
+    main()
