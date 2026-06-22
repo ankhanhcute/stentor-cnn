@@ -32,5 +32,8 @@ venv/
 env/
 .env
 *.npy
-*.npy
-*.npy
+data/
+logs/
+results/
+*.pt
+

@@ -5,8 +5,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --time=08:00:00
-#SBATCH --array=0-4
+#SBATCH --time=12:00:00
+#SBATCH --array=0
 #SBATCH --output=logs/cv_fold%a_%j.out
 #SBATCH --error=logs/cv_fold%a_%j.err
 
@@ -28,7 +28,7 @@ python -c "import torch; print('cuda:', torch.cuda.is_available())"
 python -u cross_val/train_fold.py \
     --fold ${SLURM_ARRAY_TASK_ID} \
     --k 5 \
-    --epochs 100 \
+    --epochs 200 \
     --seed 42 \
     --margin 0.2
 

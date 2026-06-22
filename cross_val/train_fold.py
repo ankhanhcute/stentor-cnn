@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 THIS_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJ_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 CNN_DIR   = os.path.join(PROJ_ROOT, "stentor_cnn")
-PRETRAIN_CKPT = os.path.join(PROJ_ROOT, "stentor_cnn", "checkpoints:, "best_model.pt")
+PRETRAIN_CKPT = os.path.join(PROJ_ROOT, "stentor_cnn", "checkpoints", "best_model.pt")
 sys.path.insert(0, CNN_DIR)
 
 import loader
