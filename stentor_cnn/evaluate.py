@@ -113,6 +113,7 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
     model.eval()
     fp_tiles, fp_probs, fp_cells, fp_stims = [], [], [], []
     fn_tiles, fn_probs, fn_cells, fn_stims = [], [], [], []
+    unc_tiles, unc_probs, unc_cells, unc_stims, unc_source = [], [], [], [], [] 
     for ds in ds_list:
         for i, c in enumerate(ds.index):
             seq, labels = ds[i]
@@ -120,25 +121,35 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
             for k in range(len(labels)):
                 lab = labels[k].item()
                 prob = probs[k].item()
+                tile = seq[k]
                 if lab == -1:
-                    uncertainty = True 
-                elif prob >= threshold:
-                    uncertainty = abs(prob - threshold) < 0.05
+                    unc_tiles.append(tile.numpy()); unc_probs.append(prob)
+                    unc_cells.append(c);            unc_stims.append(k)
+                    unc_source.append("nan")
+                    continue
+                truth = int(lab)
+                if prob >= threshold:
+                    pred, uncertain = 1, (prob - threshold) < 0.05 
                 else:
-                    uncertainty = abs(prob - threshold) < 0.1
-                if uncertainty:
-                    pred = None
-                else:
-                    pred = 1 if prob >= threshold else 0
-                if pred is not None:   
-                    truth = int(lab)
-                    tile = seq[k]
-                    if pred == 1 and truth == 0:
+                    pred, uncertain = 0 , (prob - threshold) < 0.10
+                if pred == 1 and truth == 0:
+                    if uncertain:
+                        unc_tiles.append(tile.numpy()); unc_probs.append(prob)
+                        unc_cells.append(c);            unc_stims.append(k)
+                        unc_source.append("fp")
+                    else:
                         fp_tiles.append(tile.numpy()); fp_probs.append(prob)
                         fp_cells.append(c);            fp_stims.append(k)
-                    elif pred == 0 and truth == 1:
+                        
+                elif pred == 0 and truth == 1:
+                    if uncertain:
+                        unc_tiles.append(tile.numpy()); unc_probs.append(prob)
+                        unc_cells.append(c);            unc_stims.append(k)
+                        unc_source.append("fn")
+                    else:
                         fn_tiles.append(tile.numpy()); fn_probs.append(prob)
                         fn_cells.append(c);            fn_stims.append(k)
+                    
     _empty = np.zeros((0, 2, 1, 1), dtype=np.float32)
     out_path = os.path.join(OUT_DIR, f"failures_{dataset_name}.npz")
     np.savez(out_path,
@@ -146,9 +157,14 @@ def save_failures(model, ds_list, device, threshold, dataset_name):
         fp_probs=np.array(fp_probs), fp_cells=np.array(fp_cells), fp_stims=np.array(fp_stims),
         fn_tiles=np.array(fn_tiles, dtype=np.float32) if fn_tiles else _empty,
         fn_probs=np.array(fn_probs), fn_cells=np.array(fn_cells), fn_stims=np.array(fn_stims),
+        unc_tiles=np.array(unc_tiles, dtype=np.float32) if unc_tiles else _empty,
+        unc_probs=np.array(unc_probs), unc_cells=np.array(unc_cells), unc_stims=np.array(unc_stims),
+        unc_source=np.array(unc_source) if unc_source else np.array([], dtype='<U3')
+        
     )
     print(f"  Failures saved → {out_path}  (FP={len(fp_tiles)}  FN={len(fn_tiles)})")
-
+    print(f"    confident wrong: FP={len(fp_tiles)}  FN={len(fn_tiles)}")
+    print(f"    uncertain (not-confident FP+FN+NaN): {len(unc_tiles)}   <- compare to predict_all's n_uncertain"
 # ---- Main ----
 def main():
     device = (
