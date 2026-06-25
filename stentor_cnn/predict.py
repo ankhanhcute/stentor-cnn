@@ -18,7 +18,7 @@ import torch
 from torch.utils.data import DataLoader
 import loader
 from model import StentorSequenceModel , count_params
-from evaluate import predict_all
+from evaluate import predict_all_core
 import numpy as np
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -61,7 +61,7 @@ def main():
     ds = loader.StentorPairs(tiles, manual, all_cells, tiled_h5_path=TILED_H5)
     print(f"cells loaded: {len(ds)}")
     # run predictions
-    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, best_thresh)
+    all_predictions, uncertain_stimuli = predict_all_core(model, [ds], device, best_thresh)
  
     n_certain   = sum(1 for p in all_predictions if p["prediction"] is not None)
     n_uncertain = sum(1 for p in all_predictions if p["prediction"] is None)

@@ -73,7 +73,7 @@ def evaluate(model, dl, loss_fn, device):
     return total_loss / max(n_batches, 1), all_logits, all_labels
 #---- Predict and save all of them----
 @torch.no_grad()
-def predict_all(model, ds_list, device, threshold):
+def predict_all_core(model, ds_list, device, threshold):
     model.eval()
     all_predictions = []
     uncertain_stimuli = []
@@ -84,9 +84,7 @@ def predict_all(model, ds_list, device, threshold):
             for k in range(len(labels)):
                 lab = labels[k].item()
                 prob = probs[k].item()
-                if lab == -1:
-                    uncertainty = True
-                elif prob >= threshold:
+                if prob >= threshold:
                     uncertainty = abs(prob - threshold) < 0.05
                 else:
                     uncertainty = abs(prob - threshold) < 0.1
@@ -105,6 +103,35 @@ def predict_all(model, ds_list, device, threshold):
                 "cell":c, 
                 "stimulus":k, 
                 "probability": round(prob, 4)
+                })
+    return all_predictions, uncertain_stimuli
+@torch.no_grad()
+def predict_all(model, ds_list, device, threshold):
+    core_predictions, _ = predict_all_core(model, ds_list, device, threshold)
+    all_predictions = []
+    uncertain_stimuli = []
+    idx = 0
+    for ds in ds_list:
+        for i, c in enumerate(ds.index):
+            seq, labels = ds[i]
+            for k in range(len(labels)):
+                lab = labels[k].item()
+                core_entry = core_predictions[idx]
+                if lab == -1:
+                    pred = None
+                else:
+                    pred = core_entry["prediction"]
+                all_predictions.append({
+                "cell": c, 
+                "stimulus": k, 
+                "prediction": pred, 
+                "probability": prob
+                })
+                if pred is None:
+                    uncertain_stimuli.append({
+                "cell":c, 
+                "stimulus":k, 
+                "probability": prob
                 })
     return all_predictions, uncertain_stimuli
 #---- Save failures ----
