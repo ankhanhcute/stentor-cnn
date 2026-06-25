@@ -10,9 +10,6 @@ Stentor coeruleus cells contract in response to mechanical stimuli. This pipelin
 
 **Model:** `StentorSequenceModel` — a CNN backbone with a temporal Conv1d layer that processes sequences of pre/post stimulus frame pairs per cell.
 
-**Performance on unseen datasets:**
-- Mean F1: 0.952
-- Mean Recall: 0.952
 
 ---
 
