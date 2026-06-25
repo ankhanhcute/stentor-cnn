@@ -28,6 +28,7 @@ import loader
 from model import StentorSequenceModel, count_params
 
 # ---- Config ----
+DEPLOY_THRESH = 0.5
 BATCH_SIZE = 32
 DROPOUT = 0.3
 CHECKPOINT = os.path.join(THIS_DIR, "checkpoints", "best_model.pt")
@@ -248,9 +249,8 @@ def main():
     # save failures
     dataset_name = os.path.basename(TILED_H5).replace("_tiled.h5", "")
     print(f"\n--- Saving failures ---")
-    save_failures(model, [ds], device, best_thresh, dataset_name)
     #predict all
-    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, best_thresh)
+    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, DEPLOY_THRESH)
         
     with open(os.path.join(OUT_DIR, f"predictions_{dataset_name}.json"), "w") as f:
         json.dump(all_predictions, f, indent=2)
