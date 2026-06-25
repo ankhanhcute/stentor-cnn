@@ -118,6 +118,8 @@ def predict_all(model, ds_list, device, threshold):
             for k in range(len(labels)):
                 lab = labels[k].item()
                 core_entry = core_predictions[idx]
+                idx += 1
+                prob = core_entry["probability"]
                 if lab == -1:
                     pred = None
                 else:
