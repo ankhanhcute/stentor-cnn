@@ -28,7 +28,7 @@ import loader
 from model import StentorSequenceModel, count_params
 
 # ---- Config ----
-DEPLOY_THRESH = 0.5
+THRESH_FILE = os.path.join(THIS_DIR, "checkpoints", "best_thresh.json")
 BATCH_SIZE = 32
 DROPOUT = 0.3
 CHECKPOINT = os.path.join(THIS_DIR, "checkpoints", "best_model.pt")
@@ -222,7 +222,9 @@ def main():
     model = StentorSequenceModel(dropout=DROPOUT).to(device)
     model.load_state_dict(torch.load(CHECKPOINT, map_location=device, weights_only=True))
     print(f"  model params: {count_params(model):,}")
-
+    
+    with open(THRESH_FILE) as f:
+        deploy_thresh = json.load(f)["threshold"]
     avg_loss, all_logits, all_labels = evaluate(model, dl, loss_fn, device)
 
     # find best threshold
@@ -249,8 +251,9 @@ def main():
     # save failures
     dataset_name = os.path.basename(TILED_H5).replace("_tiled.h5", "")
     print(f"\n--- Saving failures ---")
+    save_failures(model, [ds], device, deploy_thresh, dataset_name)
     #predict all
-    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, DEPLOY_THRESH)
+    all_predictions, uncertain_stimuli = predict_all(model, [ds], device, deploy_thresh)
         
     with open(os.path.join(OUT_DIR, f"predictions_{dataset_name}.json"), "w") as f:
         json.dump(all_predictions, f, indent=2)
