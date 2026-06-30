@@ -198,13 +198,15 @@ class StentorPairs(Dataset):
         self.index: list[int] = []
         cell_indices = list(cell_indices)
         max_nan_frac = 0.75
+        no_labels_at_all = bool(np.all(np.isnan(manual)))
         for c in cell_indices:
             if not (0 <= c < num_cells_t):
                 raise IndexError(f"cell index {c} out of range [0, {num_cells_t})")
-            nan_frac = np.mean(np.isnan(manual[c]))
-            if nan_frac >= max_nan_frac:
-                print(f"  [SKIP] cell {c}: {nan_frac:.0%} NaN labels (>= {max_nan_frac:.0%} threshold)")
-                continue
+            if not no_labels_at_all:
+                nan_frac = np.mean(np.isnan(manual[c]))
+                if nan_frac >= max_nan_frac:
+                    print(f"  [SKIP] cell {c}: {nan_frac:.0%} NaN labels (>= {max_nan_frac:.0%} threshold)")
+                    continue
             self.index.append(c)
     def __len__(self) -> int: #tell pytorch how many usable sample we have
         return len(self.index)
